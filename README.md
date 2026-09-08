@@ -133,25 +133,347 @@ A clear breakdown of how our project is organized.
 ```
 thunders-robotics/
 │
-├── 📂 src/
-│   ├── 📂 main/
-│   │   ├── 📂 java/       # Main robot code (Java/C++ equivalent)
-│   │   │   ├── 📂 frc/    # Main package
-│   │   │   │   ├── 📂 robot/      # Robot container & commands
-│   │   │   │   ├── 📂 subsystems/ # Physical subsystems (Drivetrain, Arm)
-│   │   │   │   └── 📂 commands/   # Actions the robot performs
-│   │   └── 📂 resources/ # Configuration files
+├── 📂 .github/
+│   ├── 📂 workflows/
+│   │   ├── ci.yml
+│   │   ├── build.yml
+│   │   ├── test.yml
+│   │   ├── lint.yml
+│   │   └── security.yml
 │   │
-│   └── 📂 test/          # Unit tests
+│   ├── 📂 ISSUE_TEMPLATE/
+│   │   ├── bug_report.md
+│   │   ├── feature_request.md
+│   │   ├── hardware_issue.md
+│   │   └── robotics_task.md
+│   │
+│   └── PULL_REQUEST_TEMPLATE.md
 │
-├── 📂 docs/              # Technical documentation & meeting notes
-├── 📂 scripts/           # Utility scripts (deployment, backup)
-├── 📂 CAD/               # Mechanical drawings (STEP files, Onshape links)
-├── 📂 electronics/       # Schematics and PCB layouts
-├── 📂 vision/            # Vision processing pipelines
-├── .gitignore
-├── build.gradle          # Build configuration
-└── README.md
+├── 📂 src/
+│   │
+│   ├── 📂 main/
+│   │   │
+│   │   ├── 📂 java/
+│   │   │   └── 📂 frc/
+│   │   │       ├── 📂 robot/
+│   │   │       │   ├── Robot.java
+│   │   │       │   ├── RobotContainer.java
+│   │   │       │   └── RobotState.java
+│   │   │       │
+│   │   │       ├── 📂 commands/
+│   │   │       │   ├── DriveCommand.java
+│   │   │       │   ├── AutonomousCommand.java
+│   │   │       │   ├── FollowPathCommand.java
+│   │   │       │   ├── IntakeCommand.java
+│   │   │       │   ├── ArmCommand.java
+│   │   │       │   └── EmergencyStopCommand.java
+│   │   │       │
+│   │   │       ├── 📂 subsystems/
+│   │   │       │   ├── Drivetrain.java
+│   │   │       │   ├── Arm.java
+│   │   │       │   ├── Elevator.java
+│   │   │       │   ├── Intake.java
+│   │   │       │   ├── Shooter.java
+│   │   │       │   ├── Vision.java
+│   │   │       │   └── Sensors.java
+│   │   │       │
+│   │   │       ├── 📂 autonomous/
+│   │   │       │   ├── AutoRoutine.java
+│   │   │       │   ├── PathPlanner.java
+│   │   │       │   └── TrajectoryManager.java
+│   │   │       │
+│   │   │       ├── 📂 control/
+│   │   │       │   ├── PIDController.java
+│   │   │       │   ├── MotionController.java
+│   │   │       │   └── BalanceController.java
+│   │   │       │
+│   │   │       ├── 📂 sensors/
+│   │   │       │   ├── Gyroscope.java
+│   │   │       │   ├── Encoder.java
+│   │   │       │   ├── DistanceSensor.java
+│   │   │       │   └── IMU.java
+│   │   │       │
+│   │   │       ├── 📂 constants/
+│   │   │       │   ├── RobotConstants.java
+│   │   │       │   ├── MotorConstants.java
+│   │   │       │   └── SensorConstants.java
+│   │   │       │
+│   │   │       └── Main.java
+│   │   │
+│   │   ├── 📂 cpp/
+│   │   │   └── 📂 thunders/
+│   │   │       ├── robot/
+│   │   │       ├── control/
+│   │   │       ├── navigation/
+│   │   │       └── sensors/
+│   │   │
+│   │   └── 📂 resources/
+│   │       ├── robot.yaml
+│   │       ├── motors.yaml
+│   │       ├── sensors.yaml
+│   │       ├── autonomous.yaml
+│   │       └── logging.yaml
+│   │
+│   └── 📂 test/
+│       ├── 📂 java/
+│       │   └── 📂 frc/
+│       │       ├── RobotTest.java
+│       │       ├── DrivetrainTest.java
+│       │       ├── PIDControllerTest.java
+│       │       └── SensorTest.java
+│       │
+│       └── 📂 cpp/
+│           ├── control_test.cpp
+│           └── navigation_test.cpp
+│
+├── 📂 firmware/
+│   ├── 📂 esp32/
+│   │   ├── src/
+│   │   ├── include/
+│   │   ├── platformio.ini
+│   │   └── README.md
+│   │
+│   ├── 📂 stm32/
+│   │   ├── Core/
+│   │   ├── Drivers/
+│   │   ├── Middlewares/
+│   │   └── README.md
+│   │
+│   ├── 📂 arduino/
+│   │   ├── motor_controller/
+│   │   ├── sensor_node/
+│   │   └── communication/
+│   │
+│   └── README.md
+│
+├── 📂 ros/
+│   ├── 📂 ros2_ws/
+│   │   ├── 📂 src/
+│   │   │   ├── thunders_robot/
+│   │   │   ├── thunders_description/
+│   │   │   ├── thunders_bringup/
+│   │   │   ├── thunders_navigation/
+│   │   │   ├── thunders_control/
+│   │   │   ├── thunders_sensors/
+│   │   │   └── thunders_interfaces/
+│   │   │
+│   │   └── README.md
+│   │
+│   └── 📂 launch/
+│       ├── robot.launch.py
+│       ├── simulation.launch.py
+│       └── navigation.launch.py
+│
+├── 📂 robotics/
+│   ├── 📂 kinematics/
+│   │   ├── forward_kinematics.py
+│   │   ├── inverse_kinematics.py
+│   │   └── README.md
+│   │
+│   ├── 📂 dynamics/
+│   │   ├── robot_dynamics.py
+│   │   └── README.md
+│   │
+│   ├── 📂 navigation/
+│   │   ├── path_planning.py
+│   │   ├── obstacle_avoidance.py
+│   │   └── localization.py
+│   │
+│   └── 📂 control/
+│       ├── pid.py
+│       ├── mpc.py
+│       └── trajectory_control.py
+│
+├── 📂 autonomous/
+│   ├── 📂 navigation/
+│   ├── 📂 path_planning/
+│   ├── 📂 localization/
+│   ├── 📂 mapping/
+│   └── 📂 obstacle_avoidance/
+│
+├── 📂 vision/
+│   ├── 📂 camera/
+│   │   ├── camera_config.yaml
+│   │   └── camera_calibration.py
+│   │
+│   ├── 📂 detection/
+│   │   ├── object_detection.py
+│   │   ├── line_detection.py
+│   │   └── marker_detection.py
+│   │
+│   ├── 📂 tracking/
+│   │   ├── object_tracking.py
+│   │   └── robot_tracking.py
+│   │
+│   ├── 📂 calibration/
+│   │   ├── intrinsic.py
+│   │   └── extrinsic.py
+│   │
+│   └── requirements.txt
+│
+├── 📂 ai/
+│   ├── 📂 models/
+│   │   ├── detection/
+│   │   ├── classification/
+│   │   └── segmentation/
+│   │
+│   ├── 📂 training/
+│   │   ├── train.py
+│   │   ├── config.yaml
+│   │   └── checkpoints/
+│   │
+│   ├── 📂 datasets/
+│   │   ├── raw/
+│   │   ├── processed/
+│   │   └── labels/
+│   │
+│   ├── 📂 inference/
+│   │   ├── inference.py
+│   │   └── realtime.py
+│   │
+│   └── requirements.txt
+│
+├── 📂 electronics/
+│   ├── 📂 schematics/
+│   │   ├── power_distribution.pdf
+│   │   ├── motor_controller.pdf
+│   │   └── sensor_system.pdf
+│   │
+│   ├── 📂 pcb/
+│   │   ├── kicad/
+│   │   ├── gerber/
+│   │   └── bom/
+│   │
+│   ├── 📂 wiring/
+│   │   ├── wiring_diagram.pdf
+│   │   └── pinout.yaml
+│   │
+│   └── 📂 datasheets/
+│       ├── motors/
+│       ├── sensors/
+│       └── controllers/
+│
+├── 📂 CAD/
+│   ├── 📂 mechanical/
+│   │   ├── chassis/
+│   │   ├── drivetrain/
+│   │   ├── arm/
+│   │   ├── gripper/
+│   │   └── brackets/
+│   │
+│   ├── 📂 assemblies/
+│   │   ├── robot_assembly.step
+│   │   └── robot_assembly.stl
+│   │
+│   ├── 📂 drawings/
+│   │   ├── chassis.pdf
+│   │   ├── arm.pdf
+│   │   └── assembly.pdf
+│   │
+│   └── README.md
+│
+├── 📂 simulation/
+│   ├── 📂 gazebo/
+│   ├── 📂 webots/
+│   ├── 📂 mujoco/
+│   ├── 📂 unity/
+│   ├── 📂 urdf/
+│   │   └── thunders_robot.urdf
+│   └── README.md
+│
+├── 📂 config/
+│   ├── robot.yaml
+│   ├── motors.yaml
+│   ├── sensors.yaml
+│   ├── network.yaml
+│   ├── vision.yaml
+│   └── autonomous.yaml
+│
+├── 📂 scripts/
+│   ├── deploy.sh
+│   ├── build.sh
+│   ├── test.sh
+│   ├── flash_firmware.sh
+│   ├── calibrate_sensors.py
+│   ├── calibrate_camera.py
+│   ├── backup.sh
+│   └── setup_environment.sh
+│
+├── 📂 tests/
+│   ├── 📂 integration/
+│   ├── 📂 hardware/
+│   ├── 📂 software/
+│   ├── 📂 simulation/
+│   └── 📂 performance/
+│
+├── 📂 logs/
+│   └── .gitkeep
+│
+├── 📂 data/
+│   ├── 📂 telemetry/
+│   ├── 📂 sensor_data/
+│   ├── 📂 camera/
+│   └── README.md
+│
+├── 📂 docs/
+│   ├── architecture.md
+│   ├── robot-overview.md
+│   ├── software.md
+│   ├── hardware.md
+│   ├── electronics.md
+│   ├── firmware.md
+│   ├── ros2.md
+│   ├── autonomous.md
+│   ├── computer-vision.md
+│   ├── artificial-intelligence.md
+│   ├── simulation.md
+│   ├── calibration.md
+│   ├── testing.md
+│   ├── deployment.md
+│   ├── troubleshooting.md
+│   ├── safety.md
+│   ├── api.md
+│   └── 📂 meeting-notes/
+│       ├── 2026-01.md
+│       ├── 2026-02.md
+│       └── 2026-03.md
+│
+├── 📂 examples/
+│   ├── basic-drive/
+│   ├── autonomous-drive/
+│   ├── object-detection/
+│   ├── arm-control/
+│   └── sensor-reading/
+│
+├── 📂 research/
+│   ├── 📂 papers/
+│   ├── 📂 experiments/
+│   ├── 📂 datasets/
+│   ├── 📂 benchmarks/
+│   └── README.md
+│
+├── 📂 tools/
+│   ├── dashboard/
+│   ├── telemetry/
+│   ├── robot-monitor/
+│   └── diagnostics/
+│
+├── 📄 .gitignore
+├── 📄 .gitattributes
+├── 📄 .editorconfig
+├── 📄 LICENSE
+├── 📄 README.md
+├── 📄 CONTRIBUTING.md
+├── 📄 CODE_OF_CONDUCT.md
+├── 📄 SECURITY.md
+├── 📄 CHANGELOG.md
+├── 📄 CITATION.cff
+├── 📄 build.gradle
+├── 📄 settings.gradle
+├── 📄 gradle.properties
+├── 📄 requirements.txt
+├── 📄 pyproject.toml
+└── 📄 docker-compose.yml
 ```
 
 ---
