@@ -1,0 +1,141 @@
+name: CI - Thunders Robotics
+
+# Controls when the workflow will run
+on:
+  push:
+    branches: [ "main", "master", "devel" ]
+  pull_request:
+    branches: [ "main", "master", "devel" ]
+
+# Restrict default token permissions following the principle of least privilege
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  # Job 1: Code Quality & Syntax Check
+  lint:
+    name: Code Linting & Style Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black
+
+      - name: Check Code Formatting (Black)
+        run: |
+          black --check .
+
+      - name: Lint Syntax & Critical Errors (Flake8)
+        run: |
+          # Stop the build if there are syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Lint Code Style & Complexity (Flake8)
+        run: |
+          # Soft warnings for code style and complexity limits
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # Job 2: Automated Testing & Coverage Analysis
+  build-and-test:
+    name: Build & Test (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip' # Enables automatic pip caching for faster builds
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          pip install pytest pytest-cov
+
+      - name: Install C++ Dependencies & Build
+        run: |
+          sudo apt-get install -y cmake g++ clang libboost-all-dev
+          if [ -f CMakeLists.txt ]; then
+            mkdir -p build && cd build
+            cmake ..
+            make -j$(nproc)
+          else
+            echo "CMakeLists.txt not found. Skipping C++ build."
+          fi
+
+      - name: Set up Java & Install Dependencies
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven' # Change to 'gradle' if using Gradle
+
+      - name: Build and Test Java Project
+        run: |
+          if [ -f pom.xml ]; then
+            mvn clean test
+          elif [ -f build.gradle ] || [ -f build.gradle.kts ]; then
+            ./gradlew test
+          else
+            echo "No Maven or Gradle build files found. Skipping Java tests."
+          fi
+
+      - name: Set up Node.js & Install JavaScript Dependencies
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm' # Change to 'yarn' or 'pnpm' if needed
+
+      - name: Install JavaScript Dependencies & Test
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm test --if-present
+          else
+            echo "package.json not found. Skipping JavaScript tests."
+          fi
+
+      - name: Run Unit Tests with Pytest & Coverage
+        run: |
+          if [ -d "tests" ]; then
+            pytest --cov=. --cov-report=xml --cov-report=term-missing tests/
+          else
+            echo "Directory 'tests' not found. Skipping Python unit tests."
+          fi
+
+      - name: Upload Test Results Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-python-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+          retention-days: 7
