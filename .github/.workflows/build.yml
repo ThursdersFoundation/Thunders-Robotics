@@ -1,0 +1,258 @@
+name: Build - Thunders Robotics
+
+# Triggers for starting the build workflow
+on:
+  push:
+    branches: [ "main", "master", "devel" ]
+  pull_request:
+    branches: [ "main", "master", "devel" ]
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions UI
+
+# Global environment variables
+env:
+  BUILD_TYPE: Release
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+# Security: Principle of least privilege
+permissions:
+  contents: read
+  packages: write
+  checks: write
+  pull-requests: write
+
+jobs:
+  # ==========================================
+  # JOB 1: C++ Native Code & ROS Build
+  # ==========================================
+  build-cpp:
+    name: Build C++ & Robotics Engine
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # Fetches C++ submodules automatically
+
+      - name: Cache C++ Build Artifacts (CCache)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-cpp-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-cpp-${{ runner.os }}-
+
+      - name: Install C++ Build Tools & Toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            ccache \
+            g++ \
+            clang \
+            libboost-all-dev \
+            libeigen3-dev \
+            libopencv-dev
+
+      - name: Configure CMake Project
+        run: |
+          if [ -f CMakeLists.txt ]; then
+            cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          else
+            echo "No CMakeLists.txt found in repository root. Skipping CMake configuration."
+          fi
+
+      - name: Compile C++ Codebase
+        run: |
+          if [ -d "build" ]; then
+            cmake --build build --config ${{ env.BUILD_TYPE }} --parallel $(nproc)
+          else
+            echo "Build directory does not exist. Skipping compilation."
+          fi
+
+      - name: Run C++ Unit Tests (CTest)
+        run: |
+          if [ -d "build" ]; then
+            cd build && ctest --output-on-failure -C ${{ env.BUILD_TYPE }}
+          fi
+
+      - name: Upload C++ Binaries Artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: cpp-build-binaries
+          path: |
+            build/bin/
+            build/*.a
+            build/*.so
+          retention-days: 7
+
+  # ==========================================
+  # JOB 2: Python Engine & Control Algorithms
+  # ==========================================
+  build-python:
+    name: Build & Package Python Modules
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Python Packaging Tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build
+
+      - name: Install Project Dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
+
+      - name: Build Python Distribution Wheels
+        run: |
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then
+            python -m build
+          else
+            echo "No setup.py or pyproject.toml found. Skipping wheel generation."
+          fi
+
+      - name: Upload Python Package Artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: python-wheels-${{ matrix.python-version }}
+          path: dist/
+          retention-days: 7
+
+  # ==========================================
+  # JOB 3: Java Applications (Embedded / Android / Control Systems)
+  # ==========================================
+  build-java:
+    name: Build Java & JVM Subsystems
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Build with Apache Maven
+        run: |
+          if [ -f pom.xml ]; then
+            mvn clean package -DskipTests=false
+          else
+            echo "pom.xml not found. Skipping Maven build."
+          fi
+
+      - name: Build with Gradle Wrapper
+        run: |
+          if [ -f build.gradle ] || [ -f build.gradle.kts ]; then
+            chmod +x gradlew
+            ./gradlew build -x test
+          else
+            echo "Gradle build files not found. Skipping Gradle build."
+          fi
+
+      - name: Upload Java Artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: java-build-artifacts
+          path: |
+            target/*.jar
+            build/libs/*.jar
+          retention-days: 7
+
+  # ==========================================
+  # JOB 4: JavaScript & Web Interface Dashboard
+  # ==========================================
+  build-javascript:
+    name: Build Frontend Dashboard & Node Services
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+          else
+            echo "package.json not found. Skipping Node dependency installation."
+          fi
+
+      - name: Build Web Application / WebSockets Control
+        run: |
+          if [ -f package.json ]; then
+            npm run build --if-present
+          fi
+
+      - name: Upload JavaScript Dashboard Artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: web-dashboard-dist
+          path: |
+            dist/
+            build/
+            out/
+          retention-days: 7
+
+  # ==========================================
+  # JOB 5: Docker Containerization Build
+  # ==========================================
+  build-docker:
+    name: Containerize Robotics Environment
+    needs: [build-cpp, build-python]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false # Set to true when pushing to registry
+          tags: |
+            ghcr.io/${{ github.repository }}/core:latest
+            ghcr.io/${{ github.repository }}/core:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
