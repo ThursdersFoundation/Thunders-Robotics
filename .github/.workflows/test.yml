@@ -1,0 +1,218 @@
+name: Test Suite - Thunders Robotics
+
+# Menentukan kapan workflow pengujian ini berjalan
+on:
+  push:
+    branches: [ "main", "master", "devel" ]
+  pull_request:
+    branches: [ "main", "master", "devel" ]
+  workflow_dispatch: # Memungkinkan eksekusi manual dari tab GitHub Actions
+
+# Membatasi izin akses token demi keamanan
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ==========================================
+  # JOB 1: Python Testing & Coverage
+  # ==========================================
+  test-python:
+    name: Python Unit & Integration Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          pip install pytest pytest-cov pytest-xdist
+
+      - name: Run Pytest Suite with Coverage
+        run: |
+          if [ -d "tests" ] || [ -d "test" ]; then
+            # Menjalankan pengujian secara paralel menggunakan pytest-xdist (-n auto)
+            pytest -n auto --cov=. --cov-report=xml:python-coverage.xml --cov-report=term-missing
+          else
+            echo "Directory 'tests' tidak ditemukan. Pengujian Python dilewati."
+          fi
+
+      - name: Upload Python Coverage Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-coverage-${{ matrix.python-version }}
+          path: python-coverage.xml
+          retention-days: 7
+
+  # ==========================================
+  # JOB 2: C++ Unit Testing (GoogleTest / CTest)
+  # ==========================================
+  test-cpp:
+    name: C++ Testing & Static Analysis
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install C++ Testing Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            g++ \
+            clang-tidy \
+            libgtest-dev \
+            valgrind
+
+      - name: Configure CMake for Testing
+        run: |
+          if [ -f CMakeLists.txt ]; then
+            cmake -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
+          else
+            echo "CMakeLists.txt tidak ditemukan. Konfigurasi CMake dilewati."
+          fi
+
+      - name: Build C++ Test Executables
+        run: |
+          if [ -d "build" ]; then
+            cmake --build build --parallel $(nproc)
+          fi
+
+      - name: Run CTest Framework
+        run: |
+          if [ -d "build" ]; then
+            cd build
+            ctest --output-on-failure --schedule-random
+          fi
+
+  # ==========================================
+  # JOB 3: Java Subsystems Testing (JUnit)
+  # ==========================================
+  test-java:
+    name: Java Unit & Component Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Run Maven Tests
+        run: |
+          if [ -f pom.xml ]; then
+            mvn test
+          else
+            echo "pom.xml tidak ditemukan. Maven test dilewati."
+          fi
+
+      - name: Run Gradle Tests
+        run: |
+          if [ -f build.gradle ] || [ -f build.gradle.kts ]; then
+            chmod +x gradlew
+            ./gradlew test
+          else
+            echo "File Gradle tidak ditemukan. Gradle test dilewati."
+          fi
+
+      - name: Upload Java Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: java-test-reports
+          path: |
+            target/surefire-reports/
+            build/reports/tests/test/
+          retention-days: 7
+
+  # ==========================================
+  # JOB 4: JavaScript / Frontend Testing (Jest / Vitest)
+  # ==========================================
+  test-javascript:
+    name: JavaScript & UI Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node Dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+          else
+            echo "package.json tidak ditemukan. Instalasi Node dilewati."
+          fi
+
+      - name: Run JS Unit Tests
+        run: |
+          if [ -f package.json ]; then
+            npm test -- --coverage --watchAll=false --if-present
+          fi
+
+      - name: Upload JS Coverage Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: js-coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ==========================================
+  # JOB 5: Security & Dependency Vulnerability Scanning
+  # ==========================================
+  security-scan:
+    name: Security Vulnerability Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Python Security Audit (Bandit & Safety)
+        run: |
+          pip install bandit safety
+          if [ -d "src" ] || [ -d "thunders_robotics" ]; then
+            bandit -r . -x ./tests -f txt || true
+          fi
+          if [ -f requirements.txt ]; then
+            safety check || true
+          fi
+
+      - name: Node Security Audit
+        run: |
+          if [ -f package.json ]; then
+            npm audit --audit-level=high || true
+          fi
