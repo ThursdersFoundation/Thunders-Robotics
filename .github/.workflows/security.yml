@@ -1,0 +1,752 @@
+# =============================================================================
+# Security Workflow - Thunders Robotics
+# Automated security scanning, dependency auditing, and vulnerability detection
+# =============================================================================
+
+name: 🛡️ Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop, staging ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 6 * * 1'    # Every Monday at 06:00 UTC
+    - cron: '0 0 1 * *'     # First day of every month at 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+  issues: write
+  pull-requests: write
+
+env:
+  SECURITY_ISSUE_LABEL: "security"
+  CRITICAL_LABEL: "critical"
+  HIGH_LABEL: "high-severity"
+  MEDIUM_LABEL: "medium-severity"
+  LOW_LABEL: "low-severity"
+
+jobs:
+  # ===========================================================================
+  # Job 1: CodeQL Static Analysis
+  # ===========================================================================
+  codeql-analysis:
+    name: 🔍 CodeQL Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ python, javascript, java ]
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔄 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+          config: |
+            paths-ignore:
+              - '**/test/**'
+              - '**/tests/**'
+              - '**/*.test.js'
+              - '**/*.spec.js'
+              - '**/__mocks__/**'
+
+      - name: 🛠️ Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: 🧪 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: true
+          output: results/codeql-${{ matrix.language }}.sarif
+
+      - name: 📤 Upload CodeQL SARIF Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results/codeql-${{ matrix.language }}.sarif
+          category: codeql-${{ matrix.language }}
+
+  # ===========================================================================
+  # Job 2: Dependency Vulnerability Scanning
+  # ===========================================================================
+  dependency-scan:
+    name: 📦 Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      # --- Python Dependencies ---
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 🐍 Install Safety & Pip-audit
+        run: |
+          pip install --upgrade pip
+          pip install safety pip-audit
+
+      - name: 🐍 Scan Python Dependencies (Safety)
+        continue-on-error: true
+        run: |
+          echo "=== Safety Vulnerability Report ==="
+          safety check --full-report --output safety-report.txt || true
+          cat safety-report.txt
+
+      - name: 🐍 Scan Python Dependencies (pip-audit)
+        continue-on-error: true
+        run: |
+          echo "=== Pip-audit Vulnerability Report ==="
+          pip-audit --format json --output pip-audit-report.json || true
+          pip-audit --format markdown --output pip-audit-report.md || true
+          cat pip-audit-report.md || true
+
+      # --- Node.js Dependencies ---
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🟢 Install npm Dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm ci --ignore-scripts || npm install --ignore-scripts
+          fi
+
+      - name: 🟢 npm Audit
+        continue-on-error: true
+        run: |
+          if [ -f package.json ]; then
+            echo "=== npm Audit Report ==="
+            npm audit --audit-level=moderate --json > npm-audit-report.json || true
+            npm audit --audit-level=moderate || true
+          fi
+
+      - name: 🟢 npm License Check
+        continue-on-error: true
+        run: |
+          if [ -f package.json ]; then
+            npx license-checker --json > license-report.json || true
+            echo "=== License Compliance Report ==="
+            npx license-checker --summary || true
+          fi
+
+      # --- JavaScript/TypeScript Dependencies (Yarn) ---
+      - name: 🟡 Yarn Audit
+        continue-on-error: true
+        run: |
+          if [ -f yarn.lock ]; then
+            echo "=== Yarn Audit Report ==="
+            yarn audit --level moderate --json > yarn-audit-report.json || true
+            yarn audit --level moderate || true
+          fi
+
+      # --- Java Dependencies (Maven) ---
+      - name: ☕ Java Dependency Check (OWASP)
+        continue-on-error: true
+        run: |
+          if [ -f pom.xml ]; then
+            echo "=== OWASP Dependency-Check ==="
+            mvn org.owasp:dependency-check-maven:check \
+              -DfailBuildOnCVSS=7 \
+              -DoutputDirectory=dependency-check-report \
+              || true
+          fi
+
+      - name: 📤 Upload Dependency Scan Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-results
+          path: |
+            safety-report.txt
+            pip-audit-report.json
+            pip-audit-report.md
+            npm-audit-report.json
+            license-report.json
+            yarn-audit-report.json
+            dependency-check-report/
+          retention-days: 30
+
+  # ===========================================================================
+  # Job 3: Secret Scanning
+  # ===========================================================================
+  secret-scanning:
+    name: 🔑 Secret Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔑 TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified --exclude-paths=**/test/**,**/tests/**,**/__mocks__/**
+
+      - name: 🔑 Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
+
+      - name: 🔑 Scan for Hardcoded Secrets (Custom)
+        run: |
+          echo "=== Scanning for Hardcoded Secrets ==="
+          FOUND_SECRETS=0
+
+          # Check for AWS Access Keys
+          if grep -rn --include="*" -E "AKIA[0-9A-Z]{16}" . 2>/dev/null; then
+            echo "🚨 CRITICAL: AWS Access Key detected!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for AWS Secret Keys
+          if grep -rn --include="*" -E "[A-Za-z0-9/+=]{40}" . 2>/dev/null | grep -i "secret"; then
+            echo "⚠️ WARNING: Potential AWS Secret Key detected!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for Private Keys
+          if grep -rn --include="*" -E "-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----" . 2>/dev/null; then
+            echo "🚨 CRITICAL: Private Key detected in code!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for API Keys patterns
+          if grep -rn --include="*" -E "(api_key|apikey|api-key)\s*[:=]\s*['\"][^'\"]{20,}['\"]" . 2>/dev/null; then
+            echo "⚠️ WARNING: Potential API Key detected!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for Database Connection Strings
+          if grep -rn --include="*" -E "(mongodb|mysql|postgres|redis)://[^\s'\"]+" . 2>/dev/null; then
+            echo "⚠️ WARNING: Database connection string with credentials detected!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for JWT Secrets
+          if grep -rn --include="*" -E "(jwt_secret|jwt-secret|JWT_SECRET)\s*[:=]\s*['\"][^'\"]+['\"]" . 2>/dev/null; then
+            echo "⚠️ WARNING: JWT Secret detected in code!"
+            FOUND_SECRETS=1
+          fi
+
+          # Check for tokens
+          if grep -rn --include="*" -E "(token|TOKEN|Token)\s*[:=]\s*['\"][a-zA-Z0-9._-]{20,}['\"]" . --include="*.py" --include="*.js" --include="*.ts" --include="*.java" --include="*.yml" --include="*.yaml" --include="*.env" 2>/dev/null; then
+            echo "⚠️ WARNING: Potential token/secret detected!"
+            FOUND_SECRETS=1
+          fi
+
+          if [ $FOUND_SECRETS -eq 0 ]; then
+            echo "✅ No hardcoded secrets detected!"
+          else
+            echo "❌ Potential secrets found! Please review and remediate."
+            exit 1
+          fi
+
+  # ===========================================================================
+  # Job 4: SAST - Semgrep Analysis
+  # ===========================================================================
+  semgrep-analysis:
+    name: 🧬 Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧬 Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/owasp-top-ten
+            p/security-audit
+            p/secrets
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+        continue-on-error: true
+
+  # ===========================================================================
+  # Job 5: Container Security Scanning
+  # ===========================================================================
+  container-security:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐳 Check for Dockerfile
+        id: docker-check
+        run: |
+          if [ -f Dockerfile ] || [ -f docker/Dockerfile ]; then
+            echo "docker_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "docker_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🐳 Build Docker Image
+        if: steps.docker-check.outputs.docker_exists == 'true'
+        run: |
+          DOCKERFILE="Dockerfile"
+          if [ ! -f Dockerfile ] && [ -f docker/Dockerfile ]; then
+            DOCKERFILE="docker/Dockerfile"
+          fi
+          docker build -f $DOCKERFILE -t thunders-robotics:scan .
+
+      - name: 🐳 Trivy Vulnerability Scan
+        if: steps.docker-check.outputs.docker_exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'thunders-robotics:scan'
+          format: 'sarif'
+          output: 'results/trivy-container-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
+
+      - name: 🐳 Trivy Misconfiguration Scan
+        if: steps.docker-check.outputs.docker_exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          format: 'sarif'
+          output: 'results/trivy-config-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: 🐳 Dockle Lint Scan
+        if: steps.docker-check.outputs.docker_exists == 'true'
+        continue-on-error: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            goodwithtech/dockle:latest \
+            --exit-code 1 \
+            --exit-level warn \
+            thunders-robotics:scan || true
+
+      - name: 🐳 Hadolint Dockerfile Lint
+        if: steps.docker-check.outputs.docker_exists == 'true'
+        continue-on-error: true
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+
+      - name: 📤 Upload Container Scan Results
+        if: always() && steps.docker-check.outputs.docker_exists == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results/
+
+  # ===========================================================================
+  # Job 6: Infrastructure as Code (IaC) Security
+  # ===========================================================================
+  iac-security:
+    name: 🏗️ IaC Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform,kubernetes,dockerfile,github_actions,arm
+          output_format: cli,sarif
+          output_file_path: console,results/checkov-results.sarif
+          soft_fail: true
+          skip_check: CKV_GHA_1
+
+      - name: 🏗️ Trivy IaC Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'results/trivy-iac-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: 📤 Upload IaC Scan Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results/
+
+  # ===========================================================================
+  # Job 7: Lint & Code Quality Security Checks
+  # ===========================================================================
+  code-quality-security:
+    name: 📝 Code Quality & Security Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 🐍 Bandit Security Lint (Python)
+        continue-on-error: true
+        run: |
+          pip install bandit
+          echo "=== Bandit Security Report ==="
+          bandit -r . -f json -o bandit-report.json || true
+          bandit -r . -f txt || true
+
+      - name: 🟢 ESLint Security Plugin (JavaScript/TypeScript)
+        continue-on-error: true
+        run: |
+          if [ -f package.json ]; then
+            npm ci --ignore-scripts || npm install --ignore-scripts
+            npx eslint --plugin security --output eslint-security-report.json . || true
+          fi
+
+      - name: 📤 Upload Lint Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-lint-results
+          path: |
+            bandit-report.json
+            eslint-security-report.json
+          retention-days: 30
+
+  # ===========================================================================
+  # Job 8: License Compliance Check
+  # ===========================================================================
+  license-compliance:
+    name: 📜 License Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📜 REUSE Compliance Check
+        uses: fsfe/reuse-action@v4
+
+      - name: 📜 Check License File
+        run: |
+          if [ ! -f LICENSE ] && [ ! -f LICENSE.md ] && [ ! -f LICENCE ]; then
+            echo "⚠️ WARNING: No LICENSE file found in repository root!"
+          else
+            echo "✅ LICENSE file detected."
+          fi
+
+      - name: 📜 FOSSA License Scan
+        if: ${{ secrets.FOSSA_API_KEY != '' }}
+        uses: fossa/fossa-action@v1
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+        continue-on-error: true
+
+  # ===========================================================================
+  # Job 9: Malware / Suspicious File Detection
+  # ===========================================================================
+  malware-detection:
+    name: 🦠 Malware & Suspicious File Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🦠 Scan for Suspicious Files
+        run: |
+          echo "=== Suspicious File Detection ==="
+          SUSPICIOUS_FOUND=0
+
+          # Check for executable binaries
+          echo "🔍 Checking for executable binaries..."
+          find . -type f -executable -not -path "./.git/*" | while read file; do
+            mime=$(file --mime-type -b "$file")
+            if [[ "$mime" == *"application/x-executable"* ]] || \
+               [[ "$mime" == *"application/x-dosexec"* ]] || \
+               [[ "$mime" == *"application/x-sharedlib"* ]]; then
+              echo "⚠️ Suspicious binary: $file ($mime)"
+              SUSPICIOUS_FOUND=1
+            fi
+          done
+
+          # Check for encrypted or obfuscated files
+          echo "🔍 Checking for potentially obfuscated files..."
+          find . -name "*.enc" -o -name "*.encrypted" -o -name "*.obf" -o -name "*.obfuscated" 2>/dev/null | while read file; do
+            echo "⚠️ Potentially obfuscated/encrypted file: $file"
+          done
+
+          # Check for shell scripts with suspicious patterns
+          echo "🔍 Checking shell scripts for suspicious patterns..."
+          find . -name "*.sh" -not -path "./.git/*" | while read file; do
+            if grep -E "(curl|wget)\s+.*\|\s*(sh|bash|sudo)" "$file" 2>/dev/null; then
+              echo "🚨 CRITICAL: Shell script with remote code execution pattern: $file"
+            fi
+            if grep -E "rm\s+-rf\s+/" "$file" 2>/dev/null; then
+              echo "⚠️ WARNING: Shell script with destructive rm pattern: $file"
+            fi
+          done
+
+          # Check for large files (potential data exfiltration)
+          echo "🔍 Checking for unusually large files..."
+          find . -not -path "./.git/*" -type f -size +50M | while read file; do
+            echo "⚠️ Large file detected: $file ($(du -h "$file" | cut -f1))"
+          done
+
+          echo "✅ Suspicious file scan complete."
+
+  # ===========================================================================
+  # Job 10: Security Score & Report Aggregation
+  # ===========================================================================
+  security-report:
+    name: 📊 Security Report & Score
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - codeql-analysis
+      - dependency-scan
+      - secret-scanning
+      - semgrep-analysis
+      - container-security
+      - iac-security
+      - code-quality-security
+      - license-compliance
+      - malware-detection
+    if: always()
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📊 Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-security-results
+        continue-on-error: true
+
+      - name: 📊 Generate Security Summary
+        run: |
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║          🛡️  THUNDERS ROBOTICS SECURITY REPORT  🛡️       ║"
+          echo "╠══════════════════════════════════════════════════════════╣"
+          echo "║  Repository : Thunders Robotics                          ║"
+          echo "║  Date       : $(date -u '+%Y-%m-%d %H:%M:%S UTC')        ║"
+          echo "║  Commit     : ${{ github.sha }}                          ║"
+          echo "║  Branch     : ${{ github.ref_name }}                     ║"
+          echo "║  Actor      : ${{ github.actor }}                        ║"
+          echo "╠══════════════════════════════════════════════════════════╣"
+          echo "║              SECURITY SCAN RESULTS                       ║"
+          echo "╠══════════════════════════════════════════════════════════╣"
+
+          # Check job results
+          CODEQL="${{ needs.codeql-analysis.result }}"
+          DEPSCAN="${{ needs.dependency-scan.result }}"
+          SECRETS="${{ needs.secret-scanning.result }}"
+          SEMGREP="${{ needs.semgrep-analysis.result }}"
+          CONTAINER="${{ needs.container-security.result }}"
+          IAC="${{ needs.iac-security.result }}"
+          CODEQUALITY="${{ needs.code-quality-security.result }}"
+          LICENSE="${{ needs.license-compliance.result }}"
+          MALWARE="${{ needs.malware-detection.result }}"
+
+          PASS=0
+          FAIL=0
+          WARN=0
+
+          for RESULT in "$CODEQL" "$DEPSCAN" "$SECRETS" "$SEMGREP" "$CONTAINER" "$IAC" "$CODEQUALITY" "$LICENSE" "$MALWARE"; do
+            if [ "$RESULT" == "success" ]; then
+              PASS=$((PASS+1))
+            elif [ "$RESULT" == "failure" ]; then
+              FAIL=$((FAIL+1))
+            else
+              WARN=$((WARN+1))
+            fi
+          done
+
+          echo "║                                                          ║"
+          echo "║  ✅ Passed   : $PASS                                      ║"
+          echo "║  ❌ Failed   : $FAIL                                      ║"
+          echo "║  ⚠️  Warnings : $WARN                                     ║"
+          echo "║                                                          ║"
+
+          # Calculate score
+          TOTAL=$((PASS + FAIL + WARN))
+          if [ $TOTAL -gt 0 ]; then
+            SCORE=$(( (PASS * 100) / TOTAL ))
+          else
+            SCORE=0
+          fi
+
+          echo "╠══════════════════════════════════════════════════════════╣"
+          echo "║  🏆 SECURITY SCORE: ${SCORE}/100                         ║"
+
+          if [ $SCORE -ge 90 ]; then
+            echo "║  🟢 Grade: A - Excellent Security Posture               ║"
+          elif [ $SCORE -ge 80 ]; then
+            echo "║  🟡 Grade: B - Good Security Posture                    ║"
+          elif [ $SCORE -ge 70 ]; then
+            echo "║  🟠 Grade: C - Moderate Security Posture                ║"
+          elif [ $SCORE -ge 60 ]; then
+            echo "║  🔴 Grade: D - Poor Security Posture                    ║"
+          else
+            echo "║  🚫 Grade: F - Critical Security Issues!                ║"
+          fi
+
+          echo "╠══════════════════════════════════════════════════════════╣"
+
+          # Job details
+          printf "║ %-25s %-30s ║\n" "CodeQL Analysis" "$CODEQL"
+          printf "║ %-25s %-30s ║\n" "Dependency Scan" "$DEPSCAN"
+          printf "║ %-25s %-30s ║\n" "Secret Scanning" "$SECRETS"
+          printf "║ %-25s %-30s ║\n" "Semgrep SAST" "$SEMGREP"
+          printf "║ %-25s %-30s ║\n" "Container Security" "$CONTAINER"
+          printf "║ %-25s %-30s ║\n" "IaC Security" "$IAC"
+          printf "║ %-25s %-30s ║\n" "Code Quality" "$CODEQUALITY"
+          printf "║ %-25s %-30s ║\n" "License Compliance" "$LICENSE"
+          printf "║ %-25s %-30s ║\n" "Malware Detection" "$MALWARE"
+
+          echo "╚══════════════════════════════════════════════════════════╝"
+
+          # Export score for next step
+          echo "SECURITY_SCORE=$SCORE" >> $GITHUB_ENV
+
+      - name: 🚨 Create Security Issue on Failure
+        if: env.SECURITY_SCORE < 70
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const score = process.env.SECURITY_SCORE || '0';
+            const title = `🚨 Security Alert: Score ${score}/100 - Immediate Attention Required`;
+            const body = `## 🛡️ Security Alert - Thunders Robotics
+
+            **Security Score:** ${score}/100
+            **Commit:** \`${{ github.sha }}\`
+            **Branch:** \`${{ github.ref_name }}\`
+            **Triggered by:** ${{ github.actor }}
+            **Date:** ${new Date().toISOString()}
+
+            ### ⚠️ Action Required
+            The security pipeline has detected issues that require immediate attention.
+            A score below 70 indicates critical or high-severity vulnerabilities.
+
+            ### 🔗 View Details
+            [Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+            *This issue was automatically created by the Security Pipeline.*`;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['security'],
+              state: 'open'
+            });
+
+            const existingIssue = issues.data.find(i => i.title.includes('Security Alert: Score'));
+
+            if (!existingIssue) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['security', 'automated', 'critical']
+              });
+              console.log('✅ Security issue created');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `### 🔄 Security Alert Update\n\n**Score:** ${score}/100\n**Commit:** \`${{ github.sha }}\`\n**Date:** ${new Date().toISOString()}\n\n[View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+              });
+              console.log('✅ Existing security issue updated');
+            }
+
+      - name: ✅ Close Security Issue on Fix
+        if: env.SECURITY_SCORE >= 70
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['security', 'automated'],
+              state: 'open'
+            });
+
+            for (const issue of issues.data) {
+              if (issue.title.includes('Security Alert: Score')) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `### ✅ Security Issue Resolved\n\n**Score:** ${process.env.SECURITY_SCORE}/100\n**Commit:** \`${{ github.sha }}\`\n**Date:** ${new Date().toISOString()}\n\nThe security score is now above the threshold. Closing this issue.`
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: 'closed'
+                });
+                console.log(`✅ Closed issue #${issue.number}`);
+              }
+            }
+
+      - name: 💬 Comment PR with Security Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const score = process.env.SECURITY_SCORE || '0';
+            let emoji = '🟢';
+            let grade = 'A';
+            if (score < 60) { emoji = '🚫'; grade = 'F'; }
+            else if (score < 70) { emoji = '🔴'; grade = 'D'; }
+            else if (score < 80) { emoji = '🟠'; grade = 'C'; }
+            else if (score < 90) { emoji = '🟡'; grade = 'B'; }
+
+            const comment = `## 🛡️ Security Pipeline Results
+
+            ${emoji} **Security Score: ${score}/100** (Grade: ${grade})
+
+            | Scan | Result |
+            |------|--------|
+            | CodeQL Analysis | ${{ needs.codeql-analysis.result }} |
+            | Dependency Scan | ${{ needs.dependency-scan.result }} |
+            | Secret Scanning | ${{ needs.secret-scanning.result }} |
+            | Semgrep SAST | ${{ needs.semgrep-analysis.result }} |
+            | Container Security | ${{ needs.container-security.result }} |
+            | IaC Security | ${{ needs.iac-security.result }} |
+            | Code Quality | ${{ needs.code-quality-security.result }} |
+            | License Compliance | ${{ needs.license-compliance.result }} |
+            | Malware Detection | ${{ needs.malware-detection.result }} |
+
+            [View Full Report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+            *Automated by Thunders Robotics Security Pipeline*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
