@@ -1,0 +1,88 @@
+name: Thunders Robotics - Code Linting
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  lint-workflows:
+    name: Lint GitHub Actions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run actionlint
+        run: |
+          # Mengunduh dan menjalankan actionlint untuk memeriksa error pada file workflow YAML
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.py)
+          ./actionlint
+
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Flake8 / Black
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black
+
+      - name: Run Flake8 (Style & Error Check)
+        run: |
+          # Periksa error kritis dan pelanggaran PEP8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  lint-cpp:
+    name: Lint C++
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Clang-Format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check C++ Code Formatting
+        run: |
+          # Memeriksa apakah file C++ (.cpp, .hpp, .h) sesuai dengan standar .clang-format
+          find . -type f \( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" \) | xargs clang-format --dry-run --Werror
+
+  lint-js:
+    name: Lint JavaScript / TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install ESLint
+        run: |
+          npm install -g eslint
+
+      - name: Run ESLint
+        run: |
+          # Jalankan ESLint jika file konfigurasi tersedia
+          if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "package.json" ]; then
+            npx eslint . || echo "ESLint finished with warnings/errors or no config found."
+          else
+            echo "No ESLint configuration detected, skipping."
+          fi
