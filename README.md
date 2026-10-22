@@ -701,3 +701,4 @@ Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more informa
 
 </div>
 <img width="800" height="450" alt="logo" src="https://github.com/user-attachments/assets/414f44b9-d29c-4769-8960-6405e8782c70" />
+</div>
