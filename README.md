@@ -1,8 +1,5 @@
 <div align="center">
 
-[logo-preview.html](https://github.com/user-attachments/files/33821472/logo-preview.html)
-
-
 # ⚡ Thunders Robotics
 <!DOCTYPE html>
 <html lang="en">
