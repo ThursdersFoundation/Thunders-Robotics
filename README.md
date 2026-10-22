@@ -1,8 +1,119 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Thunders Robotics — Innovating the future, one robot at a time." width="560"/>
+[logo-preview.html](https://github.com/user-attachments/files/33821472/logo-preview.html)
+
 
 # ⚡ Thunders Robotics
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Thunders Robotics — Animated Logo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(1100px 600px at 50% 35%, #0e1c36 0%, #070b16 55%, #04060d 100%);
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+    overflow: hidden;
+  }
+  .logo { position: relative; text-align: center; padding: 70px 90px; }
+
+  /* Lightning bolt */
+  .bolt-wrap { position: relative; width: 150px; height: 150px; margin: 0 auto 6px; }
+  .bolt {
+    position: absolute; top: 50%; left: 50%;
+    width: 64px; height: 104px;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(180deg, #fff35c 0%, #ffc400 100%);
+    clip-path: polygon(58% 0, 0 60%, 37% 60%, 30% 100%, 100% 34%, 55% 34%);
+    filter: drop-shadow(0 0 16px rgba(255, 208, 74, .9));
+    animation: flicker 3.2s infinite;
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    6%  { opacity: .25; } 10% { opacity: 1; }
+    14% { opacity: .5;  } 18% { opacity: 1; }
+    62% { opacity: 1;   } 66% { opacity: .4; } 70% { opacity: 1; }
+  }
+
+  /* Radar rings */
+  .rings span {
+    position: absolute; top: 50%; left: 50%;
+    width: 150px; height: 150px; margin: -75px 0 0 -75px;
+    border: 2px solid rgba(30, 144, 255, .55); border-radius: 50%;
+    animation: ripple 2.8s linear infinite;
+  }
+  .rings span:nth-child(2) { animation-delay: 1.4s; }
+  @keyframes ripple {
+    from { transform: scale(.35); opacity: .7; }
+    to   { transform: scale(3.1); opacity: 0; }
+  }
+
+  /* Blue center text */
+  h1 {
+    font-size: clamp(44px, 9vw, 78px);
+    font-weight: 900; letter-spacing: 6px; line-height: 1.05;
+    background: linear-gradient(90deg, #6fd6ff, #1e90ff, #0a5cff, #6fd6ff);
+    background-size: 250% auto;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 24px rgba(30, 144, 255, .45));
+    animation: shine 5s linear infinite;
+  }
+  @keyframes shine { to { background-position: 250% center; } }
+
+  h2 {
+    margin-top: 8px;
+    font-size: clamp(16px, 3.4vw, 28px);
+    font-weight: 600; color: #9fd4ff;
+    letter-spacing: 18px;
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
+
+  .divider {
+    width: 120px; height: 2px; margin: 24px auto 0;
+    background: linear-gradient(90deg, transparent, #1e90ff, transparent);
+  }
+  p.tag { margin-top: 22px; font-style: italic; color: #7d93b2; font-size: 15px; letter-spacing: .4px; }
+
+  /* Sparks */
+  .spark {
+    position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: #aee3ff; opacity: 0; box-shadow: 0 0 10px #6fd6ff;
+    animation: spark 2.2s infinite;
+  }
+  .s1 { top: 6%;  left: 12%; }
+  .s2 { top: 16%; right: 9%; animation-delay: .5s; }
+  .s3 { bottom: 18%; right: 15%; animation-delay: 1s; }
+  .s4 { bottom: 10%; left: 17%; animation-delay: 1.4s; }
+  @keyframes spark {
+    0%   { opacity: 0; transform: translateY(0) scale(.6); }
+    30%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-26px) scale(1.2); }
+  }
+</style>
+</head>
+<body>
+  <div class="logo">
+    <span class="spark s1"></span><span class="spark s2"></span>
+    <span class="spark s3"></span><span class="spark s4"></span>
+
+    <div class="bolt-wrap">
+      <div class="rings"><span></span><span></span></div>
+      <div class="bolt"></div>
+    </div>
+
+    <h1>THUNDERS</h1>
+    <h2>ROBOTICS</h2>
+    <div class="divider"></div>
+    <p class="tag">Innovating the future, one robot at a time.</p>
+  </div>
+</body>
+</html>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
