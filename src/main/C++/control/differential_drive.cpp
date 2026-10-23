@@ -19,7 +19,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2024-2026 Thunders Robotics. All rights reserved.
 // =============================================================================
-#pragma once
+#pragma "once"
 
 #include <cmath>
 
@@ -104,6 +104,5 @@ private:
     double wheel_radius_m_;
     double track_width_m_;
     Pose   pose_ {0.0, 0.0, 0.0};
+    };
 };
-
-} // namespace thunders::control
