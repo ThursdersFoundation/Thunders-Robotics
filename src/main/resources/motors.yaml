@@ -1,0 +1,303 @@
+# =============================================================================
+# thunders-robotic / resources / motors.yaml
+# -----------------------------------------------------------------------------
+# Motor controller configuration: CAN IDs, PID gains, current limits, gear
+# ratios, and inversion flags for every motor on the Thunders robot.
+#
+# Consumed by:
+#   - thunders/control/motor_controller.cpp (MotorController interface)
+#   - thunders/control/motor_driver.cpp     (MotorDriver vendor bridge)
+#   - firmware/esp32/src/drivers/motor_driver.cpp
+#   - firmware/stm32/Drivers/thunders_drivers/motor/
+#
+# CAN ID convention (matches MotorConstants.java):
+#   1-8   Drivetrain (4 modules x 2 motors)
+#   13-14 Arm (shoulder, elbow)
+#   16    Elevator
+#   18    Intake roller
+#   19-20 Shooter flywheels (top, bottom)
+#   21-22 Climber (left, right) - reserved
+#
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2024-2026 Thunders Robotics. All rights reserved.
+# =============================================================================
+
+# --- CAN bus configuration --------------------------------------------------
+can_bus:
+  name: "rio"
+  bitrate: 1000000                   # 1 Mbps, standard for FRC
+  timeout_ms: 50
+  retry_count: 3
+
+# --- Motor type catalogue ---------------------------------------------------
+# Vendor part numbers for the motors physically installed on the robot.
+# Used by the firmware to pick the correct kV / kT / stall current values.
+motor_types:
+  kraken_x60:
+    type: "brushless"
+    free_speed_rpm: 6000
+    stall_current_a: 211
+    stall_torque_nm: 7.75
+    kt_nm_per_amp: 0.0367           # torque constant
+    kv_rpm_per_v: 500
+  falcon_500:
+    type: "brushless"
+    free_speed_rpm: 6380
+    stall_current_a: 257
+    stall_torque_nm: 4.69
+    kt_nm_per_amp: 0.0182
+    kv_rpm_per_v: 530
+  neo_550:
+    type: "brushless"
+    free_speed_rpm: 11000
+    stall_current_a: 105
+    stall_torque_nm: 0.95
+    kt_nm_per_amp: 0.0090
+    kv_rpm_per_v: 917
+  cim:
+    type: "brushed"
+    free_speed_rpm: 5330
+    stall_current_a: 131
+    stall_torque_nm: 2.41
+    kt_nm_per_amp: 0.0184
+    kv_rpm_per_v: 444
+
+# --- Drivetrain motors ------------------------------------------------------
+# Each swerve module has a drive motor (controls wheel speed) and a steer
+# motor (controls wheel heading). Drive motors use Kraken X60s for max torque;
+# steer motors use Falcon 500s for their integrated encoder.
+drivetrain:
+  nominal_voltage: 12.0
+  voltage_compensation: true
+
+  # Per-motor current limits. Exceeding these for >100 ms trips the controller.
+  current_limits:
+    drive_continuous_a: 40
+    drive_peak_a: 80
+    drive_peak_duration_ms: 100
+    steer_continuous_a: 20
+    steer_peak_a: 40
+    steer_peak_duration_ms: 100
+
+  # Drive motor PID (closed-loop velocity at 1 kHz on the controller).
+  drive_pid:
+    kp: 0.0005
+    ki: 0.0
+    kd: 0.0
+    ks: 0.05                       # static friction feedforward (volts)
+    kv: 0.012                      # velocity feedforward (volts per rad/s)
+    ka: 0.0                        # acceleration feedforward
+    max_output_v: 12.0
+
+  # Steer motor PID (closed-loop position at 1 kHz).
+  steer_pid:
+    kp: 6.0
+    ki: 0.0
+    kd: 0.0
+    ks: 0.0
+    kv: 0.0
+    max_output_v: 12.0
+
+  # Drive gear ratios (motor revs per wheel rev). 6.75 = typical swerve ratio.
+  drive_gear_ratio: 6.75
+  steer_gear_ratio: 12.8
+
+  modules:
+    front_left:
+      drive: { can_id: 1,  motor_type: kraken_x60, inverted: false, brake: true, encoder: integrated }
+      steer: { can_id: 2,  motor_type: falcon_500, inverted: false, brake: true, encoder: integrated }
+      abs_encoder_offset_deg: -0.5
+    front_right:
+      drive: { can_id: 3,  motor_type: kraken_x60, inverted: true,  brake: true, encoder: integrated }
+      steer: { can_id: 4,  motor_type: falcon_500, inverted: false, brake: true, encoder: integrated }
+      abs_encoder_offset_deg: 90.2
+    back_left:
+      drive: { can_id: 5,  motor_type: kraken_x60, inverted: false, brake: true, encoder: integrated }
+      steer: { can_id: 6,  motor_type: falcon_500, inverted: false, brake: true, encoder: integrated }
+      abs_encoder_offset_deg: 179.8
+    back_right:
+      drive: { can_id: 7,  motor_type: kraken_x60, inverted: true,  brake: true, encoder: integrated }
+      steer: { can_id: 8,  motor_type: falcon_500, inverted: false, brake: true, encoder: integrated }
+      abs_encoder_offset_deg: -89.9
+
+# --- Arm motors -------------------------------------------------------------
+arm:
+  shoulder:
+    can_id: 13
+    motor_type: falcon_500
+    inverted: false
+    brake: true
+    current_limit_a: 30
+    gear_ratio: 100.0               # motor revs per joint rev
+    pid:
+      kp: 0.05
+      ki: 0.0
+      kd: 0.005
+      ks: 0.0                       # gravity feedforward applied separately
+      kg: 0.20                      # gravity feedforward coefficient
+      max_output_v: 12.0
+    motion_magic:
+      max_vel_deg_per_s: 180.0
+      max_accel_deg_per_s2: 360.0
+    limits:
+      min_deg: -90.0
+      max_deg: 90.0
+      tolerance_deg: 2.0
+    encoder:
+      type: absolute
+      port: 4
+      offset_deg: 12.3
+  elbow:
+    can_id: 14
+    motor_type: falcon_500
+    inverted: true
+    brake: true
+    current_limit_a: 30
+    gear_ratio: 75.0
+    pid:
+      kp: 0.04
+      ki: 0.0
+      kd: 0.004
+      ks: 0.0
+      kg: 0.15
+      max_output_v: 12.0
+    motion_magic:
+      max_vel_deg_per_s: 180.0
+      max_accel_deg_per_s2: 360.0
+    limits:
+      min_deg: -135.0
+      max_deg: 135.0
+      tolerance_deg: 2.0
+    encoder:
+      type: absolute
+      port: 5
+      offset_deg: -45.6
+
+# --- Arm setpoints ----------------------------------------------------------
+# Named positions; the operator picks one via the joystick hat. Values are in
+# degrees, measured from horizontal.
+arm_setpoints:
+  stow:            { shoulder: 0.0,   elbow: 0.0   }
+  intake:          { shoulder: -45.0, elbow: 90.0  }
+  speaker_podium:  { shoulder: 20.0,  elbow: 30.0  }
+  speaker_sub:     { shoulder: 35.0,  elbow: 45.0  }
+  amp:             { shoulder: 60.0,  elbow: 60.0  }
+  climb:           { shoulder: 80.0,  elbow: 100.0 }
+
+# --- Elevator ---------------------------------------------------------------
+elevator:
+  motor:
+    can_id: 16
+    motor_type: falcon_500
+    inverted: false
+    brake: true
+    current_limit_a: 30
+    gear_ratio: 8.0                 # motor revs per drum rev
+    pid:
+      kp: 5.0
+      ki: 0.0
+      kd: 0.5
+      ks: 0.05
+      kg: 0.10                      # gravity feedforward (volts)
+      kv: 1.5                       # velocity feedforward (volts per m/s)
+      max_output_v: 12.0
+    motion_magic:
+      max_vel_m_per_s: 1.5
+      max_accel_m_per_s2: 3.0
+    limits:
+      min_m: 0.0
+      max_m: 1.20
+      climb_max_m: 1.80
+      tolerance_m: 0.02
+    encoder:
+      type: string_pot
+      port: 6
+      ticks_per_meter: 4096.0
+    limit_switches:
+      bottom_port: 7
+      top_port: 8
+
+# --- Intake -----------------------------------------------------------------
+intake:
+  roller:
+    can_id: 18
+    motor_type: neo_550
+    inverted: false
+    brake: false                    # coast so pieces don't get crushed
+    current_limit_a: 20
+    max_voltage_v: 12.0
+    pid:
+      kp: 0.0
+      ki: 0.0
+      kd: 0.0
+      ks: 0.0
+      kv: 0.0
+  pneumatics:
+    pcm_can_id: 0
+    forward_channel: 0
+    reverse_channel: 1
+    beam_break_dio_port: 8
+  speeds:
+    intake: 0.7                     # percent output
+    hold: 0.15
+    feed: -0.9
+    eject: -1.0
+  timeouts:
+    intake_timeout_s: 3.0
+    hold_dwell_s: 0.3
+    auto_retract_s: 5.0
+
+# --- Shooter ----------------------------------------------------------------
+shooter:
+  top_flywheel:
+    can_id: 19
+    motor_type: kraken_x60
+    inverted: true
+    brake: false                    # coast for flywheel spin-down
+    current_limit_a: 40
+    pid:
+      kp: 0.0005
+      ki: 0.0
+      kd: 0.0
+      ks: 0.05
+      kv: 0.012
+      max_output_v: 12.0
+  bottom_flywheel:
+    can_id: 20
+    motor_type: kraken_x60
+    inverted: false
+    brake: false
+    current_limit_a: 40
+    pid:
+      kp: 0.0005
+      ki: 0.0
+      kd: 0.0
+      ks: 0.05
+      kv: 0.012
+      max_output_v: 12.0
+  gear_ratio: 1.0
+  speed_presets_rpm:
+    idle: 500.0
+    sub: 5500.0
+    podium: 4500.0
+    wing: 3500.0
+  spin_ratio: 0.95                  # bottom / top flywheel ratio (backspin)
+  at_speed_tolerance_pct: 0.05      # 5% of setpoint
+  spool_up_timeout_s: 1.5
+
+# --- Climber (reserved) -----------------------------------------------------
+climber:
+  left_motor:
+    can_id: 21
+    motor_type: neo_550
+    inverted: false
+    brake: true
+    current_limit_a: 60
+  right_motor:
+    can_id: 22
+    motor_type: neo_550
+    inverted: true
+    brake: true
+    current_limit_a: 60
+  hook_sensor_dio_port: 9
+  climb_height_m: 1.80

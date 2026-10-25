@@ -1,0 +1,234 @@
+# =============================================================================
+# thunders-robotic / resources / autonomous.yaml
+# -----------------------------------------------------------------------------
+# Autonomous routine configuration: routine catalogue, trajectory paths, path
+# planner/follower parameters, and match-strategy metadata.
+#
+# Consumed by:
+#   - thunders/autonomous/AutoRoutine.cpp (enum + metadata)
+#   - thunders/autonomous/PathPlanner.cpp (path file loader)
+#   - thunders/autonomous/TrajectoryManager.cpp (cache + inline trajectory builder)
+#   - thunders/commands/AutonomousCommand.cpp (state machine)
+#   - thunders/commands/FollowPathCommand.cpp (HolonomicDriveController)
+#
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2024-2026 Thunders Robotics. All rights reserved.
+# =============================================================================
+
+# --- Autonomous period timing -----------------------------------------------
+autonomous:
+  period_duration_s: 15.0           # FMS auto period is 15 s
+  grace_period_s: 0.5               # delay before first command (motor spin-up)
+  balance_time_budget_s: 5.0        # max time to spend on balance phase
+  teleop_handoff_buffer_s: 0.2      # stop auto this far before teleop starts
+
+# --- Routine catalogue ------------------------------------------------------
+# Each routine has a stable key (used in code) plus a display name for the
+# dashboard. The `command` field is the name of the command sequence to
+# build; see `commands` below.
+routines:
+  none:
+    display_name: "Do Nothing"
+    description: "No autonomous. Use only if all other routines are broken."
+    command: "noop"
+    scores_points: false
+    attempts_balance: false
+    risk_level: "none"
+
+  leave_community:
+    display_name: "Leave Community"
+    description: "Drive forward out of the community zone. Scores mobility."
+    command: "leave_community"
+    scores_points: false
+    attempts_balance: false
+    risk_level: "low"
+
+  score_and_leave:
+    display_name: "Score Preload, Leave"
+    description: "Score the preloaded game piece, then drive out of community."
+    command: "score_and_leave"
+    scores_points: true
+    attempts_balance: false
+    risk_level: "low"
+
+  score_two_balance:
+    display_name: "Score 2 + Balance"
+    description: "Score preload, acquire and score a second piece, then balance."
+    command: "score_two_balance"
+    scores_points: true
+    attempts_balance: true
+    risk_level: "medium"
+
+  max_mobility:
+    display_name: "Max Mobility (3 piece)"
+    description: "Score preload, then race around scoring up to two more pieces."
+    command: "max_mobility"
+    scores_points: true
+    attempts_balance: false
+    risk_level: "high"
+
+# Default routine selected on the dashboard. Should be the simplest routine
+# that still scores points; complex routines should be opt-in.
+default_routine: score_and_leave
+
+# --- Command sequences ------------------------------------------------------
+# Each command is a sequence of steps. Steps are executed in order; the next
+# step starts when the previous one finishes. Step types:
+#   score_preload    - spin up shooter, feed piece, wait for shot to clear
+#   follow_path      - follow the named trajectory
+#   acquire_and_score- follow trajectory while intaking, then score
+#   balance          - engage the auto-balance controller
+#   wait             - do nothing for the given duration
+#   stop             - stop the drivetrain
+commands:
+  noop:
+    steps:
+      - { type: stop }
+
+  leave_community:
+    steps:
+      - { type: follow_path, path: "LeaveCommunity" }
+      - { type: stop }
+
+  score_and_leave:
+    steps:
+      - { type: score_preload }
+      - { type: follow_path, path: "LeaveCommunity" }
+      - { type: stop }
+
+  score_two_balance:
+    steps:
+      - { type: score_preload }
+      - { type: acquire_and_score, path: "ScoreTwoBalance" }
+      - { type: balance }
+      - { type: stop }
+
+  max_mobility:
+    steps:
+      - { type: score_preload }
+      - { type: acquire_and_score, path: "MaxMobility" }
+      - { type: stop }
+
+# --- Trajectory paths -------------------------------------------------------
+# Each path is either:
+#   - a PathPlanner file in `deploy/pathplanner/<name>.path`, OR
+#   - an inline trajectory defined by waypoints below.
+#
+# Inline trajectories are useful for development; they let the team test the
+# autonomous framework before authoring PathPlanner paths.
+paths:
+  LeaveCommunity:
+    source: inline
+    start_pose: { x: 0.0, y: 0.0, yaw_deg: 0.0 }
+    end_pose:   { x: 3.0, y: 0.0, yaw_deg: 0.0 }
+    interior_waypoints: []
+
+  ScoreTwoBalance:
+    source: pathplanner
+    file: "ScoreTwoBalance.path"
+    # Inline fallback if the PathPlanner file is missing.
+    fallback:
+      start_pose: { x: 0.0, y: 0.0, yaw_deg: 0.0 }
+      end_pose:   { x: 3.0, y: 1.0, yaw_deg: 90.0 }
+      interior_waypoints:
+        - { x: 1.5, y: 0.5 }
+
+  MaxMobility:
+    source: inline
+    start_pose: { x: 0.0, y: 0.0, yaw_deg: 0.0 }
+    end_pose:   { x: 0.0, y: 0.0, yaw_deg: 180.0 }
+    interior_waypoints:
+      - { x: 2.0, y: 0.5 }
+      - { x: 4.0, y: 0.0 }
+      - { x: 2.0, y: -0.5 }
+
+  AcquireAndScore:
+    source: inline
+    start_pose: { x: 0.0, y: 0.0, yaw_deg: 0.0 }
+    end_pose:   { x: 2.0, y: 0.5, yaw_deg: 45.0 }
+    interior_waypoints:
+      - { x: 1.0, y: 0.0 }
+
+# --- Trajectory constraints -------------------------------------------------
+# Applied to all inline trajectories. PathPlanner paths carry their own
+# constraints in the .path file.
+trajectory_constraints:
+  max_velocity_mps: 4.5
+  max_acceleration_m_per_s2: 6.0
+  max_centripetal_accel_m_per_s2: 4.0
+  start_velocity_mps: 0.0
+  end_velocity_mps: 0.0
+  reversed: false
+
+# --- Holonomic drive controller gains ---------------------------------------
+# Used by FollowPathCommand to track the trajectory. Three PID controllers
+# (X, Y, theta) plus a profiled rotation controller.
+holonomic_drive_controller:
+  x_controller:
+    kp: 1.5
+    ki: 0.0
+    kd: 0.0
+  y_controller:
+    kp: 1.5
+    ki: 0.0
+    kd: 0.0
+  theta_controller:
+    kp: 3.0
+    ki: 0.0
+    kd: 0.0
+    max_velocity_rad_per_s: 3.14159
+    max_acceleration_rad_per_s2: 6.28318
+  position_tolerance_m: 0.05
+  heading_tolerance_rad: 0.05
+
+# --- Path planner -----------------------------------------------------------
+path_planner:
+  deploy_directory: "deploy/pathplanner"
+  cache_paths: true                 # cache loaded paths for the match
+  alliance_aware: true              # mirror paths for red alliance
+  holonomic_mode: true              # swerve = holonomic; tank = false
+
+# --- Path follower (pure pursuit) -------------------------------------------
+path_follower:
+  algorithm: "pure_pursuit"         # pure_pursuit | ramsete
+  lookahead_m: 1.0                  # look-ahead distance (1 m typical)
+  max_linear_v_mps: 4.5
+  max_angular_v_rad_per_s: 3.14159
+  min_lookahead_m: 0.5              # reduce lookahead near the end
+  end_tolerance_m: 0.05
+
+# --- Auto-balance controller ------------------------------------------------
+balance_controller:
+  pitch_tolerance_deg: 2.0
+  hold_dwell_s: 1.0                 # must be within tol for this long
+  approach_speed: 0.8               # m/s during APPROACH phase
+  climb_speed: 0.4                  # m/s during CLIMB_ON phase
+  approach_timeout_s: 3.0           # give up if no pitch detected
+  pitch_pid:
+    kp: 0.05
+    ki: 0.0
+    kd: 0.01
+    max_output: 0.6                 # max forward speed during LEVEL phase
+  states:
+    - APPROACH
+    - CLIMB_ON
+    - LEVEL
+    - HOLD
+
+# --- Alliance strategy ------------------------------------------------------
+# Used by the drive team's strategy code to pick a routine that complements
+# the alliance partners' routines. Computed before the match.
+alliance_strategy:
+  avoid_double_balance: true        # don't balance if an ally is already balancing
+  prefer_mobility_if_behind: true   # if losing by >2, switch to max_mobility
+  points_thresholds:
+    score_and_leave: 5
+    score_two_balance: 12
+    max_mobility: 18
+
+# --- Match state ------------------------------------------------------------
+match_state:
+  auto_period_s: 15.0
+  teleop_period_s: 135.0
+  endgame_period_s: 20.0           # last 20 s of teleop
+  warning_threshold_s: 30.0        # warn drive team when this much time remains

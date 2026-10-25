@@ -1,0 +1,215 @@
+# =============================================================================
+# thunders-robotic / resources / logging.yaml
+# -----------------------------------------------------------------------------
+# Logging configuration for the Thunders robotics platform.
+#
+# Defines log levels, output sinks (console, file, NetworkTables), file
+# rotation policy, and per-subsystem verbosity overrides. Consumed by the
+# logger initialiser at startup; values map to the `thunders::diagnostics`
+# logger interface.
+#
+# Log level hierarchy (most verbose to least):
+#   TRACE < DEBUG < INFO < WARN < ERROR < CRITICAL < OFF
+#
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2024-2026 Thunders Robotics. All rights reserved.
+# =============================================================================
+
+# --- Global defaults --------------------------------------------------------
+logging:
+  # Default level applied to any subsystem not listed in `subsystems` below.
+  default_level: INFO
+
+  # Format string for log messages. Placeholders:
+  #   {timestamp}  - ISO 8601 UTC
+  #   {level}      - 5-char level name (TRACE, DEBUG, INFO, WARN, ERROR, CRIT)
+  #   {subsystem}  - subsystem name (e.g., "drivetrain", "vision")
+  #   {message}    - log message
+  #   {file}       - source file name
+  #   {line}       - source line number
+  format: "[{timestamp}] [{level}] [{subsystem}] {message} ({file}:{line})"
+
+  # Timestamp format (strftime-style).
+  timestamp_format: "%Y-%m-%dT%H:%M:%S.%eZ"
+
+  # Whether to colourise console output (auto-detected if `auto`).
+  colorize_console: auto
+
+  # Flush behaviour:
+  #   immediate  - flush after every message (slowest, safest)
+  #   periodic   - flush every N messages (default)
+  #   lazy       - flush only on WARN or higher
+  flush_policy: periodic
+  flush_interval_messages: 50
+
+  # Buffer size for the async log queue. Larger = more memory but smoother
+  # under burst load. Set to 0 for synchronous logging.
+  async_queue_size: 1024
+
+# --- Sinks ------------------------------------------------------------------
+# A sink is a destination for log messages. Multiple sinks can be active
+# simultaneously; each sink can have its own minimum level.
+sinks:
+  # Console (stdout) — always enabled. Useful during development.
+  console:
+    enabled: true
+    level: INFO
+    colorize: true
+    stream: stdout                    # stdout | stderr
+
+  # File sink — writes to the robot's persistent storage. Files are rotated
+  # by size and by time; the older of the two triggers a rotation.
+  file:
+    enabled: true
+    level: DEBUG
+    directory: "/home/lvuser/logs"
+    filename_pattern: "thunders-{date}.log"
+    date_format: "%Y-%m-%d"
+    rotation:
+      max_size_mb: 10
+      max_files: 20                   # keep the last 20 files
+      max_age_days: 14                # delete files older than 14 days
+      rotate_at_startup: false        # true = new file on every boot
+    flush_policy: periodic
+    flush_interval_s: 2.0
+
+  # NetworkTables sink — publishes the latest WARN+ messages to a
+  # NetworkTables table so the drive team can see them on the dashboard.
+  networktables:
+    enabled: true
+    level: WARN
+    table: "Thunders/Log"
+    max_messages_per_second: 20       # rate-limit to avoid NT flooding
+    buffer_size: 50                   # keep the last 50 messages on the table
+
+  # Crash log — a separate file sink that captures only CRITICAL messages
+  # and stack traces. Always written synchronously.
+  crash:
+    enabled: true
+    level: CRITICAL
+    directory: "/home/lvuser/logs/crash"
+    filename_pattern: "crash-{timestamp}.log"
+    flush_policy: immediate
+    include_backtrace: true
+
+  # Remote syslog — forwards to a remote syslog server (optional). Useful
+  # for centralised log aggregation at competitions.
+  syslog:
+    enabled: false
+    level: INFO
+    host: "10.99.99.5"
+    port: 514
+    facility: local0
+
+# --- Per-subsystem overrides ------------------------------------------------
+# Each subsystem can override the global default level. Useful for turning
+# up verbosity on a misbehaving subsystem without flooding the log from
+# everything else.
+subsystems:
+  robot:          INFO
+  robot_manager:  INFO
+  drivetrain:     INFO
+  arm:            INFO
+  elevator:       INFO
+  intake:         INFO
+  shooter:        INFO
+  vision:         DEBUG
+  sensors:        INFO
+  imu:            WARN
+  lidar:          WARN
+  ultrasonic:     WARN
+  infrared:       WARN
+  encoder:        WARN
+  gps:            WARN
+  camera:         DEBUG
+  force:          WARN
+  navigation:     INFO
+  navigator:      INFO
+  path_planner:   DEBUG
+  path_follower:  INFO
+  odometry:       DEBUG
+  localization:   DEBUG
+  obstacle_avoidance: WARN
+  control:        INFO
+  pid:            WARN
+  motor:          WARN
+  autonomous:     INFO
+  balance:        INFO
+  safety:         WARN
+  watchdog:       ERROR
+  diagnostics:    INFO
+  communication:  INFO
+  networktables:  WARN
+
+# --- Message filters --------------------------------------------------------
+# Drop or sample messages matching the given patterns. Useful for silencing
+# noisy messages without changing the source code.
+filters:
+  # Drop these messages entirely (regex match on the formatted message).
+  drop:
+    - ".*odometry update.*"            # too noisy at 50 Hz
+    - ".*NT heartbeat.*"
+
+  # Sample these messages (emit one out of every N).
+  sample:
+    - pattern: ".*encoder tick.*"
+      every_n: 100
+    - pattern: ".*imu sample.*"
+      every_n: 50
+
+# --- Performance counters ---------------------------------------------------
+# Logs performance metrics at a slow cadence for trend analysis.
+performance:
+  enabled: true
+  publish_rate_hz: 1
+  metrics:
+    - loop_dt
+    - loop_overrun_count
+    - free_memory_mb
+    - total_memory_mb
+    - cpu_load_percent
+    - can_bus_utilisation_percent
+    - nt_update_rate_hz
+  log_to_file: true
+  log_to_networktables: true
+
+# --- Audit log --------------------------------------------------------------
+# Audit log records every mode change, every E-stop trigger, and every
+# autonomous routine selection. Used for post-match review.
+audit:
+  enabled: true
+  file: "/home/lvuser/logs/audit.log"
+  events:
+    - mode_change
+    - emergency_stop
+    - autonomous_selected
+    - brownout
+    - fault
+    - subsystem_init
+    - subsystem_stop
+  flush_policy: immediate
+
+# --- Development vs competition ---------------------------------------------
+# Profiles let the drive team switch between verbose (development) and quiet
+# (competition) logging by setting the THUNDERS_LOG_PROFILE environment
+# variable on the RoboRIO.
+profiles:
+  development:
+    default_level: DEBUG
+    sinks:
+      console: { level: DEBUG }
+      file:    { level: TRACE }
+  competition:
+    default_level: WARN
+    sinks:
+      console: { level: WARN }
+      file:    { level: INFO }
+      networktables: { level: ERROR }
+  simulation:
+    default_level: TRACE
+    sinks:
+      console: { level: TRACE }
+      file:    { enabled: false }
+
+# Active profile (overridden by THUNDERS_LOG_PROFILE env var if set).
+active_profile: development

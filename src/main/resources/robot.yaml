@@ -1,0 +1,126 @@
+# =============================================================================
+# thunders-robotic / resources / robot.yaml
+# -----------------------------------------------------------------------------
+# Top-level robot configuration for the Thunders robotics platform.
+#
+# This file is consumed by the RobotConfig loader in
+# `thunders/robot/robot_config.cpp`. Every value here maps to a field on the
+# RobotConfig struct; renaming a key here without updating the loader will
+# cause a startup error.
+#
+# Tuning philosophy:
+#   - All physical dimensions in metres.
+#   - All angles in radians unless the key has a `_deg` suffix.
+#   - All times in seconds unless the key has a `_ms` suffix.
+#   - All voltages in volts, currents in amps, temperatures in Celsius.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2024-2026 Thunders Robotics. All rights reserved.
+# =============================================================================
+
+# --- Identity ---------------------------------------------------------------
+# Build metadata is overwritten by the CI pipeline at deploy time. The values
+# below are defaults that show up when the file is loaded without a CI build.
+robot:
+  name: "thunders-mk4"
+  version: "2026.1.0"
+  build_date: "2026-01-15T08:00:00Z"
+  git_hash: "abc1234"
+  serial_number: "TH-2026-0042"
+  competition_team_number: 9999
+
+# --- Loop timing ------------------------------------------------------------
+# The robot's main control loop runs at `loop_period_hz`. `max_loop_dt_seconds`
+# is the threshold above which a loop overrun is recorded in RobotStatus; it
+# should be ~25% above the nominal period to allow for OS jitter.
+loop:
+  loop_period_hz: 50                    # 50 Hz = 20 ms nominal period
+  loop_period_seconds: 0.020
+  max_loop_dt_seconds: 0.030            # overruns above this are flagged
+  watchdog_timeout_seconds: 0.200       # robot auto-disables if no loop in 200 ms
+
+# --- Default mode -----------------------------------------------------------
+# The robot boots into this mode. Legal values: DISABLED, IDLE, AUTONOMOUS,
+# TELEOP, TEST, EMERGENCY. Production deployments use DISABLED; the driver
+# station transitions to TELEOP after the FMS signals match start.
+default_mode: DISABLED
+
+# --- Physical dimensions ----------------------------------------------------
+# Used by the URDF, the collision checker, and the path planner's inflation
+# radius. Changing these values invalidates the odometry calibration.
+physical:
+  length_m: 0.85
+  width_m: 0.75
+  height_m: 0.45
+  weight_kg: 32.5
+  wheelbase_m: 0.60
+  track_width_m: 0.65
+  wheel_diameter_m: 0.1016            # 4 inches
+  ground_clearance_m: 0.04
+  cg_height_m: 0.18                   # centre of gravity height (for tip-over calc)
+
+# --- Drivetrain kinematics --------------------------------------------------
+# Swerve modules are mounted at the corners; the offsets below are relative
+# to the robot centre (positive X = forward, positive Y = left).
+drivetrain:
+  type: swerve                        # swerve | differential | mecanum
+  max_drive_speed_mps: 4.5
+  max_drive_accel_m_per_s2: 6.0
+  max_angular_speed_rad_per_s: 3.14159   # pi rad/s = 180 deg/s
+  max_angular_accel_rad_per_s2: 6.28318  # 2*pi
+  max_centripetal_accel_m_per_s2: 4.0
+  drive_slew_accel: 8.0               # (m/s)/s, slew rate limiter for teleop
+  drive_slew_rot: 6.28318             # (rad/s)/s
+  brake_mode_default: true
+  voltage_compensation_v: 12.0
+
+  # Module mounting positions (metres from robot centre).
+  modules:
+    front_left:  { x:  0.30, y:  0.30, drive_can_id: 1, steer_can_id: 2, encoder_port: 0 }
+    front_right: { x:  0.30, y: -0.30, drive_can_id: 3, steer_can_id: 4, encoder_port: 1 }
+    back_left:   { x: -0.30, y:  0.30, drive_can_id: 5, steer_can_id: 6, encoder_port: 2 }
+    back_right:  { x: -0.30, y: -0.30, drive_can_id: 7, steer_can_id: 8, encoder_port: 3 }
+
+# --- Operator interface -----------------------------------------------------
+# USB port assignments on the driver station laptop. These are stable across
+# reboots because the OS remembers the device's serial number.
+operator_interface:
+  driver_controller_port: 0           # Xbox controller
+  operator_joystick_port: 1           # Joystick
+  dashboard_url: "http://10.99.99.5:5800"
+  controller_deadband: 0.08
+
+# --- Safety -----------------------------------------------------------------
+safety:
+  enable_watchdog: true
+  enable_brownout_detection: true
+  brownout_threshold_v: 6.5
+  emergency_stop_latch: true          # E-stop stays latched until explicit recovery
+  motor_idle_timeout_s: 5.0           # auto-stops motors idle for this long
+  pitch_tip_threshold_deg: 35.0       # auto-disables if pitch exceeds this
+  roll_tip_threshold_deg: 35.0
+
+# --- NetworkTables ----------------------------------------------------------
+# NetworkTables is the pub/sub bus between the robot and the driver station.
+network_tables:
+  team_number: 9999
+  robot_ip: "10.99.99.2"
+  driver_station_ip: "10.99.99.5"
+  enable_shuffleboard: true
+  shuffleboard_port: 5800
+  update_rate_hz: 10
+
+# --- Diagnostics ------------------------------------------------------------
+diagnostics:
+  publish_rate_hz: 2                  # slow-rate dashboard publishes
+  enable_field_2d: true               # publish Field2d widget for pose viz
+  enable_pdp_telemetry: true
+  enable_loop_overrun_warning: true
+
+# --- Power distribution -----------------------------------------------------
+power:
+  pdp_can_id: 1
+  pdp_type: "CTRE"                    # CTRE | REV
+  low_battery_threshold_v: 11.0
+  critical_battery_threshold_v: 10.5
+  brownout_recovery_delay_s: 1.0
