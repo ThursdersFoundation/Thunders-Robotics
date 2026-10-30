@@ -1,0 +1,23 @@
+# ESP32 flash partition table for Thunders Robotic firmware
+# Reference: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/partition-tables.html
+#
+# Layout (4 MB flash):
+#   - 0x10000  app      (main firmware image)      3 MB
+#   - 0x310000 nvs     (non-volatile settings)    24 KB
+#   - 0x316000 otadata (OTA selection data)        8 KB
+#   - 0x318000 ota_0   (OTA slot 0)             512 KB
+#   - 0x398000 ota_1   (OTA slot 1)             512 KB
+#   - 0x418000 spiffs  (log + calibration data)  512 KB
+#
+# Use with: board_build.partitions = partitions.csv
+# Verify with: pio run -t upload -- -DUPLOAD_PART_SIZE=...
+
+# Name,   Type, SubType,  Offset,   Size,    Flags
+nvs,      data, nvs,      0x9000,   0x6000,
+phy_init, data, phy,      0xf000,   0x1000,
+factory,  app,  factory,  0x10000,  0x100000,
+ota_0,    app,  ota_0,    0x110000, 0x100000,
+ota_1,    app,  ota_1,    0x210000, 0x100000,
+otadata,  data, ota,      0x310000, 0x02000,
+nvs_robo, data, nvs,      0x312000, 0x06000,
+spiffs,   data, spiffs,   0x318000, 0x0E8000,
