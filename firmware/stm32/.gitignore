@@ -1,0 +1,53 @@
+# =============================================================================
+# Build artefacts
+# =============================================================================
+build/
+build-test/
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.o
+*.a
+*.obj
+*.d
+*.su
+
+# =============================================================================
+# CMake / IDE state
+# =============================================================================
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile.in
+_deps/
+.cache/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# =============================================================================
+# Vendor submodules (pulled in, NOT committed)
+# =============================================================================
+Drivers/STM32F4xx_HAL_Driver/upstream/
+Drivers/CMSIS/Device/ST/
+Drivers/CMSIS/Include/CMSIS/
+Middlewares/FreeRTOS/upstream/
+
+# =============================================================================
+# SEGGER / OpenOCD logs and debug artefacts
+# =============================================================================
+*.log
+JLinkLog.txt
+openocd.log
+segger_rtt.log
+
+# =============================================================================
+# Local toolchain overrides
+# =============================================================================
+.toolchain.cmake
